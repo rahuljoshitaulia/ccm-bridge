@@ -7,9 +7,6 @@ import java.io.IOException;
 import java.net.ServerSocket;
 import java.util.concurrent.TimeUnit;
 
-/**
- * Created by rahul.joshi on 11/9/15.
- */
 public class CCMTestUtils {
 
   public static int findAvailablePort(int startingWith) {
