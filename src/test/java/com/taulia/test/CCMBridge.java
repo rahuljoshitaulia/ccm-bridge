@@ -33,7 +33,6 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 //TODO CLEAN OUT SYSTEM.OUT.PRINTLN STATEMENTS AND CHANGE TO LOGGER STATEMENTS
-//TODO CLEAN OUT UNUSED METHODS FROM THIS CCM Bridge
 public class CCMBridge {
 
   private static final Logger logger = LoggerFactory.getLogger(CCMBridge.class);
@@ -264,6 +263,17 @@ public class CCMBridge {
   }
 
 
+  public void showLog(int n) {
+    logger.info("Showing Log: ");
+    execute(CCM_COMMAND + " node%d showlog", n);
+  }
+
+  public void setLog() {
+    logger.info("Showing Log: ");
+    execute(CCM_COMMAND + " setlog TRACE");
+  }
+
+
   public void bootstrapNode(int n) {
     bootstrapNode(n, null);
   }
@@ -405,15 +415,7 @@ public class CCMBridge {
     return IP_PREFIX + Integer.toString(nodeNumber);
   }
 
-  public void showLog(int n) {
-    logger.info("Showing Log: ");
-    execute(CCM_COMMAND + " node%d showlog", n);
-  }
 
-  public void setLog() {
-    logger.info("Showing Log: ");
-    execute(CCM_COMMAND + " setlog TRACE");
-  }
 
 
 

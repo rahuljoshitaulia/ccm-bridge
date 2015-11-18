@@ -5,6 +5,7 @@ import com.datastax.driver.core.PlainTextAuthProvider;
 import com.datastax.driver.core.SSLOptions;
 import com.datastax.driver.core.Session;
 import com.google.common.base.Optional;
+import com.google.common.base.Stopwatch;
 import org.junit.After;
 import org.junit.Before;
 
@@ -23,6 +24,8 @@ public abstract class SSLTestBase {
 
   private final boolean requireClientAuth;
 
+  private static Stopwatch timer = Stopwatch.createUnstarted();
+
   protected CCMBridge ccm;
 
   protected Cluster cluster;
@@ -38,16 +41,19 @@ public abstract class SSLTestBase {
   public  void beforeDse() {
     //DSE This seems to work with SSL security
 
+    System.out.println("Building and starting DSE cluster .....");
+    timer.start();
     ccm = CCMBridge.builder("test")
       .notStarted()
       .withSSL(requireClientAuth)
       .withCassandraConfiguration("authenticator", "PasswordAuthenticator")
       .withCassandraConfiguration("authorizer" , "AllowAllAuthorizer")
       .buildDse();
-
     ccm.setWorkload(1, "solr");
     ccm.start();
     ccm.waitForUp(1);
+    timer.stop();
+    System.out.println("Time Taken to Start DSE Cluster" + timer);
 
   }
 

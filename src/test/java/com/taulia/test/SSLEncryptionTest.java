@@ -3,10 +3,13 @@ package com.taulia.test;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.SimpleStatement;
 import com.google.common.base.Optional;
+import com.google.common.io.CharStreams;
 import org.apache.http.HttpResponse;
 import org.apache.http.HttpStatus;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.protocol.HTTP;
 import org.junit.Assert;
@@ -14,6 +17,7 @@ import org.junit.Test;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.Base64;
 
@@ -36,10 +40,16 @@ public class SSLEncryptionTest extends SSLTestBase {
   private static final String TEST_TABLE_INSERT_FORMAT = "INSERT INTO test (%s, %s) VALUES ('%s', %d)";
 
   private static final String SOLR_CORE_REST_CALL_FORMATTED_STRING =
-    String.format("http://127.0.1.1:8983/solr/admin/cores?action=CREATE&name=%s.%s&generateResources=true&reindex=true", SIMPLE_KEYSPACE, TEST_TABLE_NAME);
+    String.format("http://127.0.1.1:8983/solr/admin/cores?action=CREATE&name=%s.%s&reindex=true", SIMPLE_KEYSPACE, TEST_TABLE_NAME);
 
-  private static final String RESOURCES_SOLR_CORE_REST_CALL_FORMATTED_STRING =
-    String.format("http://127.0.1.1:8983/solr/admin/cores?action=CREATE&name=%s.%s&generateResources=true&reindex=true", SIMPLE_KEYSPACE, TEST_TABLE_NAME);
+  private static final String SOLR_CONFIG_UPLOAD_FORMATTED_STRING =
+    String.format("http://127.0.1.1:8983/solr/resource/%s.%s/solrconfig.xml", SIMPLE_KEYSPACE, TEST_TABLE_NAME);
+
+  private static final String SOLR_CONFIG_GET_STRING = "http://127.0.1.1:8983/solr/resource/solrconfig.xml";
+
+
+  private static final String SOLR_SCHEMA_UPLOAD_FORMATTED_STRING =
+    String.format("http://127.0.1.1:8983/solr/resource/%s.%s/schema.xml", SIMPLE_KEYSPACE, TEST_TABLE_NAME);
 
 
   private static final String DSE_AUTH_USER = "cassandra";
@@ -59,18 +69,19 @@ public class SSLEncryptionTest extends SSLTestBase {
   public void should_connect_with_ssl() throws Exception {
 
     connectWithSSLOptions(getSSLOptions(Optional.<String>absent(), Optional.of(CCMBridge.DEFAULT_CLIENT_TRUSTSTORE_PATH)));
-
     buildKeySpace();
     useKeySpace();
     createTable();
     insertTestData();
-    createSolrScehmaAndReIndex();
-    ccm.flush();//need to flush for changes to catch
+    uploadSolrConfigXml();
+    uploadSolrSchemaXml();
+    createSolrCore();
+
+    ccm.flush();//flusing to make sure that the index is committed to.
     testCQLQuery();
     testCQLSolrQuery();
+
   }
-
-
 
 
 
@@ -91,13 +102,69 @@ public class SSLEncryptionTest extends SSLTestBase {
     for (int i = 0; i < 100; i++){
       session.execute(String.format(TEST_TABLE_INSERT_FORMAT, TEST_TABLE_KEY_COLUMN, TEST_TABLE_VALUE1_COLUMN,  TEST_KEY_INSERT_VALUE, i));
     }
-    //flush node via ccm bridge
-   // ccm.flush();
 
   }
 
-  //TODO NEED TO LOOK INTO THE FACT THAT WE CAN UPLOAD STATIC SCHEMA SOURCES FROM OUR REPO TO SOLR
-  private void createSolrScehmaAndReIndex() throws IOException {
+
+
+  private void uploadSolrConfigXml() throws IOException{
+
+    String url = SOLR_CONFIG_UPLOAD_FORMATTED_STRING;
+    HttpPost request = new HttpPost(url);
+    HttpClient httpClient = HttpClientBuilder.create().build();
+
+    String encoding = Base64.getEncoder().encodeToString(new String(DSE_AUTH_USER + ":" + DSE_AUTH_PASSWORD).getBytes());
+    request.setHeader(AUTH_HEADER, String.format(AUTH_HEADER_VALUE_FORMAT, encoding));
+    request.setHeader("Content-type", "text/xml; charset=utf-8");
+    InputStream configXmlIs =  SSLEncryptionTest.class.getResourceAsStream("/solr/solrconfig.xml");
+    String xmlString = CharStreams.toString(new InputStreamReader(configXmlIs, "UTF-8"));
+    StringEntity stringEntity = new StringEntity(xmlString);
+    request.setEntity(stringEntity);
+
+    System.out.println("Making Rest call to upload Solr Config xml");
+    try{
+      // add request header
+      request.addHeader("User-Agent", HTTP.USER_AGENT);
+      HttpResponse response = httpClient.execute(request);
+      int response_code = response.getStatusLine().getStatusCode();
+      handleRestError(response_code, response);
+    }
+    finally{
+      request.releaseConnection();
+    }
+
+  }
+
+  private void uploadSolrSchemaXml() throws IOException{
+
+
+    String url = SOLR_SCHEMA_UPLOAD_FORMATTED_STRING;
+    HttpPost request = new HttpPost(url);
+    HttpClient httpClient = HttpClientBuilder.create().build();
+
+    String encoding = Base64.getEncoder().encodeToString(new String(DSE_AUTH_USER + ":" + DSE_AUTH_PASSWORD).getBytes());
+    request.setHeader(AUTH_HEADER, String.format(AUTH_HEADER_VALUE_FORMAT, encoding));
+    request.setHeader("Content-type", "text/xml; charset=utf-8");
+    InputStream configXmlIs =  SSLEncryptionTest.class.getResourceAsStream("/solr/schema.xml");
+    String xmlString = CharStreams.toString(new InputStreamReader(configXmlIs, "UTF-8"));
+    StringEntity stringEntity = new StringEntity(xmlString);
+    request.setEntity(stringEntity);
+
+    System.out.println("Making Rest call to create Solr schema");
+    try{
+      // add request header
+      request.addHeader("User-Agent", HTTP.USER_AGENT);
+      HttpResponse response = httpClient.execute(request);
+      int response_code = response.getStatusLine().getStatusCode();
+      handleRestError(response_code, response);
+    }
+    finally{
+      request.releaseConnection();
+    }
+
+  }
+
+  private void createSolrCore() throws IOException {
 
     String url = SOLR_CORE_REST_CALL_FORMATTED_STRING;
     HttpGet request = new HttpGet(url);
@@ -106,31 +173,13 @@ public class SSLEncryptionTest extends SSLTestBase {
     String encoding = Base64.getEncoder().encodeToString(new String(DSE_AUTH_USER+":"+DSE_AUTH_PASSWORD).getBytes());
     request.setHeader(AUTH_HEADER, String.format(AUTH_HEADER_VALUE_FORMAT, encoding));
 
-    System.out.println("Making Rest call to create Solr schema");
+    System.out.println("Making Rest call to create solr core from uploaded resources");
     try{
       // add request header
       request.addHeader("User-Agent", HTTP.USER_AGENT);
       HttpResponse response = httpClient.execute(request);
-
-
       int response_code = response.getStatusLine().getStatusCode();
-
-      if(response_code != HttpStatus.SC_OK){
-        System.out.println("Response Code : "
-          + response.getStatusLine().getStatusCode());
-        BufferedReader rd = new BufferedReader(
-          new InputStreamReader(response.getEntity().getContent()));
-
-        StringBuffer result = new StringBuffer();
-        String line = "";
-        while ((line = rd.readLine()) != null) {
-          result.append(line);
-        }
-
-        System.out.println("Solr Response Body:"+result);
-        throw new RuntimeException(String.format("Solr Response Code %d:  with body %s", response_code, result));
-      }
-
+      handleRestError(response_code, response);
     }
     finally{
       request.releaseConnection();
@@ -138,6 +187,26 @@ public class SSLEncryptionTest extends SSLTestBase {
 
   }
 
+
+  private void handleRestError(int response_code, HttpResponse response ) throws IOException {
+
+    if(response_code != HttpStatus.SC_OK){
+      System.out.println("Response Code : "
+        + response.getStatusLine().getStatusCode());
+      BufferedReader rd = new BufferedReader(
+        new InputStreamReader(response.getEntity().getContent()));
+
+      StringBuffer result = new StringBuffer();
+      String line = "";
+      while ((line = rd.readLine()) != null) {
+        result.append(line);
+      }
+
+      System.out.println("Solr Response Body:"+result);
+      throw new RuntimeException(String.format("Solr Response Code %d:  with body %s", response_code, result));
+    }
+
+  }
 
 
   private void testCQLQuery(){
