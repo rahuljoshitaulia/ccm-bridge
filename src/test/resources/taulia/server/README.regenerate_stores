@@ -1,0 +1,19 @@
+To regenerate the serverstore (truststore) -
+
+***Start of commands to generate new serverstore.jks in current directory***
+echo "backing up existing serverstore.jks"
+mv -v serverstore.jks `date +%m%d%y_%H%M`_serverstore.jks
+
+echo "subjectKeyIdentifier=hash" > server.extension
+
+openssl req -new -newkey rsa:2048 -nodes -subj "/CN=localhost/OU=DevelopmentServer/O=Taulia/L=Park City/ST=UT/C=US/" -keyout server.key > server.csr
+
+openssl x509 -req -days 3650 -in server.csr -signkey server.key -out server.pem -extfile server.extension
+
+openssl pkcs12 -export -in server.pem -inkey server.key -passout pass:password -out server.p12
+
+keytool -importkeystore -srckeystore server.p12 -srcstorepass password -srcstoretype pkcs12 -destkeystore serverstore.jks -deststorepass password -noprompt
+
+
+rm -f server.*
+***End of commands to generate new serverstore.jks in current directory***
